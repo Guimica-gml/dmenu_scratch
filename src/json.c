@@ -11,21 +11,26 @@ typedef struct {
     Json_Token_Kind kind;
 } Json_Literal_Def;
 
-Json_Literal_Def json_literals[] = {
+Json_Literal_Def json_symbols[] = {
     { .sv = SV_STATIC("{"), .kind = JSON_TOKEN_OPEN_CURLY },
     { .sv = SV_STATIC("}"), .kind = JSON_TOKEN_CLOSE_CURLY },
     { .sv = SV_STATIC("["), .kind = JSON_TOKEN_OPEN_BRACKET },
     { .sv = SV_STATIC("]"), .kind = JSON_TOKEN_CLOSE_BRACKET },
     { .sv = SV_STATIC(","), .kind = JSON_TOKEN_COMMA },
     { .sv = SV_STATIC(":"), .kind = JSON_TOKEN_COLON },
+};
+size_t json_symbols_count = sizeof(json_symbols)/sizeof(*json_symbols);
+
+Json_Literal_Def json_keywords[] = {
     { .sv = SV_STATIC("true"), .kind = JSON_TOKEN_TRUE },
     { .sv = SV_STATIC("false"), .kind = JSON_TOKEN_FALSE },
     { .sv = SV_STATIC("null"), .kind = JSON_TOKEN_NULL },
 };
-size_t json_literals_count = sizeof(json_literals)/sizeof(json_literals[0]);
+size_t json_keywords_count = sizeof(json_keywords)/sizeof(*json_keywords);
 
 const char *json_token_kind_to_cstr(Json_Token_Kind kind) {
     switch (kind) {
+    case JSON_TOKEN_END: return "<eof>";
     case JSON_TOKEN_OPEN_CURLY: return "{";
     case JSON_TOKEN_CLOSE_CURLY: return "}";
     case JSON_TOKEN_OPEN_BRACKET: return "[";
@@ -38,12 +43,12 @@ const char *json_token_kind_to_cstr(Json_Token_Kind kind) {
     case JSON_TOKEN_INT64: return "integer";
     case JSON_TOKEN_DECIMAL: return "decimal";
     case JSON_TOKEN_STRING: return "string";
-    case JSON_TOKEN_END: return "<eof>";
     default: assert(0 && "unreachable");
     }
 }
 
 String_View json_lexer_consume_chars(Json_Lexer *lexer, size_t count) {
+    assert(lexer->cursor + count <= lexer->content.size);
     String_View text = {0};
     text.data = &lexer->content.data[lexer->cursor];
     text.size = count;
@@ -53,7 +58,9 @@ String_View json_lexer_consume_chars(Json_Lexer *lexer, size_t count) {
 
 String_View json_lexer_consume_until(Json_Lexer *lexer, char ch) {
     size_t size = 0;
-    while (lexer->cursor + size < lexer->content.size && lexer->content.data[lexer->cursor + size] != ch) {
+    while (lexer->cursor + size < lexer->content.size &&
+           lexer->content.data[lexer->cursor + size] != ch)
+    {
         size += 1;
     }
     return json_lexer_consume_chars(lexer, size);
@@ -61,7 +68,9 @@ String_View json_lexer_consume_until(Json_Lexer *lexer, char ch) {
 
 String_View json_lexer_consume_while(Json_Lexer *lexer, int (*func)(int)) {
     size_t size = 0;
-    while (lexer->cursor + size < lexer->content.size && func(lexer->content.data[lexer->cursor + size])) {
+    while (lexer->cursor + size < lexer->content.size &&
+           func(lexer->content.data[lexer->cursor + size]))
+    {
         size += 1;
     }
     return json_lexer_consume_chars(lexer, size);
@@ -94,10 +103,10 @@ Json_Result json_lexer_next(Json_Lexer *lexer, Json_Token *token) {
         return result;
     }
 
-    for (size_t i = 0; i < json_literals_count; ++i) {
-        if (json_lexer_starts_with(lexer, json_literals[i].sv)) {
-            token->kind = json_literals[i].kind;
-            token->text = json_lexer_consume_chars(lexer, json_literals[i].sv.size);
+    for (size_t i = 0; i < json_symbols_count; ++i) {
+        if (json_lexer_starts_with(lexer, json_symbols[i].sv)) {
+            token->kind = json_symbols[i].kind;
+            token->text = json_lexer_consume_chars(lexer, json_symbols[i].sv.size);
             return result;
         }
     }
@@ -126,6 +135,20 @@ Json_Result json_lexer_next(Json_Lexer *lexer, Json_Token *token) {
         }
         token->kind = JSON_TOKEN_STRING;
         token->text = (String_View) { begin, lexer->cursor - begin_cursor - 1 };
+        return result;
+    }
+
+    if (isalpha(ch)) {
+        String_View word = json_lexer_consume_while(lexer, isalnum);
+        for (size_t i = 0; i < json_keywords_count; ++i) {
+            if (sv_eq(word, json_keywords[i].sv)) {
+                token->kind = json_keywords[i].kind;
+                token->text = word;
+                return result;
+            }
+        }
+        result.failed = true;
+        result.error = "unknown word";
         return result;
     }
 

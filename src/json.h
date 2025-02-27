@@ -53,6 +53,7 @@ struct Json_Key_Value_Pair {
 };
 
 typedef enum {
+    JSON_TOKEN_END,
     JSON_TOKEN_OPEN_CURLY,
     JSON_TOKEN_CLOSE_CURLY,
     JSON_TOKEN_OPEN_BRACKET,
@@ -65,7 +66,6 @@ typedef enum {
     JSON_TOKEN_INT64,
     JSON_TOKEN_DECIMAL,
     JSON_TOKEN_STRING,
-    JSON_TOKEN_END,
 } Json_Token_Kind;
 
 typedef struct {
