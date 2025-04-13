@@ -13,7 +13,7 @@ $ ./dmenu_scratch
 ```
 
 ## Integrating with i3
-You can add something like the following line in yout i3 config file (usually located at `~/.config/i3`):
+You can add something like the following line to your i3 config file (usually located at `~/.config/i3`):
 ```
 bindsym $mod+KEY exec --no-startup-id /PATH/TO/dmenu_scratch
 ```
