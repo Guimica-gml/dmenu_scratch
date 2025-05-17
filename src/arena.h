@@ -24,7 +24,6 @@
 
 #include <stddef.h>
 #include <stdint.h>
-#include <string.h>
 
 #ifndef ARENA_NOSTDIO
 #include <stdarg.h>
@@ -58,12 +57,14 @@ typedef struct {
     Region *begin, *end;
 } Arena;
 
-typedef struct {
+typedef struct  {
     Region *region;
     size_t count;
 } Arena_Mark;
 
-#define REGION_DEFAULT_CAPACITY (8*1024)
+#ifndef ARENA_REGION_DEFAULT_CAPACITY
+#define ARENA_REGION_DEFAULT_CAPACITY (8*1024)
+#endif // ARENA_REGION_DEFAULT_CAPACITY
 
 Region *new_region(size_t capacity);
 void free_region(Region *r);
@@ -72,8 +73,10 @@ void *arena_alloc(Arena *a, size_t size_bytes);
 void *arena_realloc(Arena *a, void *oldptr, size_t oldsz, size_t newsz);
 char *arena_strdup(Arena *a, const char *cstr);
 void *arena_memdup(Arena *a, void *data, size_t size);
+void *arena_memcpy(void *dest, const void *src, size_t n);
 #ifndef ARENA_NOSTDIO
 char *arena_sprintf(Arena *a, const char *format, ...);
+char *arena_vsprintf(Arena *a, const char *format, va_list args);
 #endif // ARENA_NOSTDIO
 
 Arena_Mark arena_snapshot(Arena *a);
@@ -82,7 +85,9 @@ void arena_rewind(Arena *a, Arena_Mark m);
 void arena_free(Arena *a);
 void arena_trim(Arena *a);
 
+#ifndef ARENA_DA_INIT_CAP
 #define ARENA_DA_INIT_CAP 256
+#endif // ARENA_DA_INIT_CAP
 
 #ifdef __cplusplus
     #define cast_ptr(ptr) (decltype(ptr))
@@ -104,6 +109,38 @@ void arena_trim(Arena *a);
         (da)->items[(da)->count++] = (item);                                                  \
     } while (0)
 
+// Append several items to a dynamic array
+#define arena_da_append_many(a, da, new_items, new_items_count)                                       \
+    do {                                                                                              \
+        if ((da)->count + (new_items_count) > (da)->capacity) {                                       \
+            size_t new_capacity = (da)->capacity;                                                     \
+            if (new_capacity == 0) new_capacity = ARENA_DA_INIT_CAP;                                  \
+            while ((da)->count + (new_items_count) > new_capacity) new_capacity *= 2;                 \
+            (da)->items = cast_ptr((da)->items)arena_realloc(                                         \
+                (a), (da)->items,                                                                     \
+                (da)->capacity*sizeof(*(da)->items),                                                  \
+                new_capacity*sizeof(*(da)->items));                                                   \
+            (da)->capacity = new_capacity;                                                            \
+        }                                                                                             \
+        arena_memcpy((da)->items + (da)->count, (new_items), (new_items_count)*sizeof(*(da)->items)); \
+        (da)->count += (new_items_count);                                                             \
+    } while (0)
+
+// Append a sized buffer to a string builder
+#define arena_sb_append_buf arena_da_append_many
+
+// Append a NULL-terminated string to a string builder
+#define arena_sb_append_cstr(a, sb, cstr)  \
+    do {                                   \
+        const char *s = (cstr);            \
+        size_t n = arena_strlen(s);        \
+        arena_da_append_many(a, sb, s, n); \
+    } while (0)
+
+// Append a single NULL character at the end of a string builder. So then you can
+// use it a NULL-terminated C string
+#define arena_sb_append_null(a, sb) arena_da_append(a, sb, 0)
+
 #endif // ARENA_H_
 
 #ifdef ARENA_IMPLEMENTATION
@@ -118,7 +155,7 @@ Region *new_region(size_t capacity)
     size_t size_bytes = sizeof(Region) + sizeof(uintptr_t)*capacity;
     // TODO: it would be nice if we could guarantee that the regions are allocated by ARENA_BACKEND_LIBC_MALLOC are page aligned
     Region *r = (Region*)malloc(size_bytes);
-    ARENA_ASSERT(r);
+    ARENA_ASSERT(r); // TODO: since ARENA_ASSERT is disableable go through all the places where we use it to check for failed memory allocation and return with NULL there.
     r->next = NULL;
     r->count = 0;
     r->capacity = capacity;
@@ -198,7 +235,52 @@ void free_region(Region *r)
 }
 
 #elif ARENA_BACKEND == ARENA_BACKEND_WASM_HEAPBASE
-#  error "TODO: WASM __heap_base backend is not implemented yet"
+
+// Stolen from https://surma.dev/things/c-to-webassembly/
+
+extern unsigned char __heap_base;
+// Since ARENA_BACKEND_WASM_HEAPBASE entirely hijacks __heap_base it is expected that no other means of memory
+// allocation are used except the arenas.
+unsigned char* bump_pointer = &__heap_base;
+// TODO: provide a way to deallocate all the arenas at once by setting bump_pointer back to &__heap_base?
+
+// __builtin_wasm_memory_size and __builtin_wasm_memory_grow are defined in units of page sizes
+#define ARENA_WASM_PAGE_SIZE (64*1024)
+
+Region *new_region(size_t capacity)
+{
+    size_t size_bytes = sizeof(Region) + sizeof(uintptr_t)*capacity;
+    Region *r = (void*)bump_pointer;
+
+    // grow memory brk() style
+    size_t current_memory_size = ARENA_WASM_PAGE_SIZE * __builtin_wasm_memory_size(0);
+    size_t desired_memory_size = (size_t) bump_pointer + size_bytes;
+    if (desired_memory_size > current_memory_size) {
+        size_t delta_bytes = desired_memory_size - current_memory_size;
+        size_t delta_pages = (delta_bytes + (ARENA_WASM_PAGE_SIZE - 1))/ARENA_WASM_PAGE_SIZE;
+        if (__builtin_wasm_memory_grow(0, delta_pages) < 0) {
+            ARENA_ASSERT(0 && "memory.grow failed");
+            return NULL;
+        }
+    }
+
+    bump_pointer += size_bytes;
+
+    r->next = NULL;
+    r->count = 0;
+    r->capacity = capacity;
+    return r;
+}
+
+void free_region(Region *r)
+{
+    // Since ARENA_BACKEND_WASM_HEAPBASE uses a primitive bump allocator to
+    // allocate the regions, free_region() does nothing. It is generally
+    // not recommended to free arenas anyway since it is better to keep
+    // reusing already allocated memory with arena_reset().
+    (void) r;
+}
+
 #else
 #  error "Unknown Arena backend"
 #endif
@@ -207,7 +289,7 @@ void free_region(Region *r)
 // Should collect things like:
 // - How many times new_region was called
 // - How many times existing region was skipped
-// - How many times allocation exceeded REGION_DEFAULT_CAPACITY
+// - How many times allocation exceeded ARENA_REGION_DEFAULT_CAPACITY
 
 void *arena_alloc(Arena *a, size_t size_bytes)
 {
@@ -215,7 +297,7 @@ void *arena_alloc(Arena *a, size_t size_bytes)
 
     if (a->end == NULL) {
         ARENA_ASSERT(a->begin == NULL);
-        size_t capacity = REGION_DEFAULT_CAPACITY;
+        size_t capacity = ARENA_REGION_DEFAULT_CAPACITY;
         if (capacity < size) capacity = size;
         a->end = new_region(capacity);
         a->begin = a->end;
@@ -227,7 +309,7 @@ void *arena_alloc(Arena *a, size_t size_bytes)
 
     if (a->end->count + size > a->end->capacity) {
         ARENA_ASSERT(a->end->next == NULL);
-        size_t capacity = REGION_DEFAULT_CAPACITY;
+        size_t capacity = ARENA_REGION_DEFAULT_CAPACITY;
         if (capacity < size) capacity = size;
         a->end->next = new_region(capacity);
         a->end = a->end->next;
@@ -250,32 +332,55 @@ void *arena_realloc(Arena *a, void *oldptr, size_t oldsz, size_t newsz)
     return newptr;
 }
 
+size_t arena_strlen(const char *s)
+{
+    size_t n = 0;
+    while (*s++) n++;
+    return n;
+}
+
+void *arena_memcpy(void *dest, const void *src, size_t n)
+{
+    char *d = dest;
+    const char *s = src;
+    for (; n; n--) *d++ = *s++;
+    return dest;
+}
+
 char *arena_strdup(Arena *a, const char *cstr)
 {
-    size_t n = strlen(cstr);
+    size_t n = arena_strlen(cstr);
     char *dup = (char*)arena_alloc(a, n + 1);
-    memcpy(dup, cstr, n);
+    arena_memcpy(dup, cstr, n);
     dup[n] = '\0';
     return dup;
 }
 
 void *arena_memdup(Arena *a, void *data, size_t size)
 {
-    return memcpy(arena_alloc(a, size), data, size);
+    return arena_memcpy(arena_alloc(a, size), data, size);
 }
 
 #ifndef ARENA_NOSTDIO
+char *arena_vsprintf(Arena *a, const char *format, va_list args)
+{
+    va_list args_copy;
+    va_copy(args_copy, args);
+    int n = vsnprintf(NULL, 0, format, args_copy);
+    va_end(args_copy);
+
+    ARENA_ASSERT(n >= 0);
+    char *result = (char*)arena_alloc(a, n + 1);
+    vsnprintf(result, n + 1, format, args);
+
+    return result;
+}
+
 char *arena_sprintf(Arena *a, const char *format, ...)
 {
     va_list args;
     va_start(args, format);
-    int n = vsnprintf(NULL, 0, format, args);
-    va_end(args);
-
-    ARENA_ASSERT(n >= 0);
-    char *result = (char*)arena_alloc(a, n + 1);
-    va_start(args, format);
-    vsnprintf(result, n + 1, format, args);
+    char *result = arena_vsprintf(a, format, args);
     va_end(args);
 
     return result;

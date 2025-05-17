@@ -8,24 +8,6 @@
 
 #include "./arena.h"
 
-#define arena_da_append_many(a, da, items_ptr, items_count)                                   \
-    do {                                                                                      \
-        if ((da)->count + (items_count) > (da)->capacity) {                                   \
-            size_t new_capacity = (da)->capacity == 0 ? ARENA_DA_INIT_CAP : (da)->capacity*2; \
-            while ((da)->count + (items_count) > new_capacity) {                              \
-                new_capacity *= 2;                                                            \
-            }                                                                                 \
-            (da)->items = cast_ptr((da)->items)arena_realloc(                                 \
-                (a), (da)->items,                                                             \
-                (da)->capacity*sizeof(*(da)->items),                                          \
-                new_capacity*sizeof(*(da)->items));                                           \
-            (da)->capacity = new_capacity;                                                    \
-        }                                                                                     \
-                                                                                              \
-        memcpy(&(da)->items[(da)->count], (items_ptr), (items_count) * sizeof(*(da)->items)); \
-        (da)->count += (items_count);                                                         \
-    } while (0)
-
 #define SV(cstr) ((String_View) { .data = (cstr), .size = strlen(cstr) })
 #define SV_STATIC(cstr) { .data = (cstr), .size = sizeof(cstr) - 1 }
 

@@ -4,6 +4,7 @@
 #include <float.h>
 #include <math.h>
 #include <assert.h>
+#include <string.h>
 #include <ctype.h>
 
 typedef struct {
@@ -119,7 +120,9 @@ Json_Result json_lexer_next(Json_Lexer *lexer, Json_Token *token) {
         size_t begin_cursor = lexer->cursor;
         bool escaped = false;
         while (true) {
-            if (lexer->cursor >= lexer->content.size || json_lexer_starts_with_char(lexer, '\n')) {
+            if (lexer->cursor >= lexer->content.size ||
+                json_lexer_starts_with_char(lexer, '\n'))
+            {
                 result.failed = true;
                 result.error = "unclosed string literal";
                 return result;

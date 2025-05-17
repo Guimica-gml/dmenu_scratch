@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <stdbool.h>
+#include <string.h>
 #include <errno.h>
 #include <assert.h>
 
@@ -372,15 +373,18 @@ int main(void) {
                 String *pos = json_dict_get_string(dict, json_obj_string(&arena, "errorposition"));
                 fprintf(
                     stderr, "Error: i3 could not parse command: %.*s\n",
-                    (int)error->count, error->items);
+                    (int)error->count, error->items
+                );
                 fprintf(
                     stderr, "Input: %.*s\n       %.*s\n",
                     (int)input->count, input->items,
-                    (int)pos->count, pos->items);
+                    (int)pos->count, pos->items
+                );
             } else {
                 fprintf(
                     stderr, "Error: i3 could not execute command: %.*s\n",
-                    (int)error->count, error->items);
+                    (int)error->count, error->items
+                );
             }
         }
     }
