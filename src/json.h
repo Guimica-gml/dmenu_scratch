@@ -8,6 +8,18 @@
 #include "./arena.h"
 #include "./utils.h"
 
+#define JSON_OBJ_STR_FROM_CSTR_LIT(cstr_lit)        \
+    (Json_Object) {                                 \
+        .kind = JSON_OBJ_STRING,                    \
+        .as = (Json_Object_As) {                    \
+            .string = (String) {                    \
+                .items = (cstr_lit),                \
+                .count = sizeof(cstr_lit) - 1,      \
+                .capacity = sizeof(cstr_lit) - 1,   \
+            }                                       \
+        },                                          \
+    }
+
 typedef enum {
     JSON_OBJ_NULL,
     JSON_OBJ_DICT,

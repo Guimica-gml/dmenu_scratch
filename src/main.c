@@ -65,21 +65,19 @@ uint32_t reader_read_uint32_bytes_le(Bytes_Reader *reader) {
     return n;
 }
 
-// NOTE(nic): it's kind of sad that we need an arena to find the scrathcpad
-// memory allocated here is just a few bytes (even considering it's recursive)
-Json_Dict *i3_find_scratchpad(Arena *arena, Json_Array *nodes) {
+Json_Dict *i3_find_scratchpad(Json_Array *nodes) {
     for (size_t i = 0; i < nodes->count; ++i) {
         Json_Dict *dict = json_array_get_dict(nodes, i);
-        Json_Array *subnodes = json_dict_get_array(dict, json_obj_string(arena, "nodes"));
+        Json_Array *subnodes = json_dict_get_array(dict, JSON_OBJ_STR_FROM_CSTR_LIT("nodes"));
         if (subnodes != NULL) {
-            Json_Dict *scratchpad = i3_find_scratchpad(arena, subnodes);
+            Json_Dict *scratchpad = i3_find_scratchpad(subnodes);
             if (scratchpad != NULL) {
                 return scratchpad;
             }
         }
 
-        String *node_type = json_dict_get_string(dict, json_obj_string(arena, "type"));
-        String *node_name = json_dict_get_string(dict, json_obj_string(arena, "name"));
+        String *node_type = json_dict_get_string(dict, JSON_OBJ_STR_FROM_CSTR_LIT("type"));
+        String *node_name = json_dict_get_string(dict, JSON_OBJ_STR_FROM_CSTR_LIT("name"));
         if (str_eq_cstr(node_type, "workspace") && str_eq_cstr(node_name, "__i3_scratch")) {
             return dict;
         }
@@ -99,24 +97,24 @@ typedef struct {
 } Windows;
 
 void i3_get_node_windows_impl(Arena *arena, Windows *windows, Json_Dict *curr, Json_Dict *parent) {
-    Json_Array *nodes = json_dict_get_array(curr, json_obj_string(arena, "nodes"));
-    Json_Array *floating_nodes = json_dict_get_array(curr, json_obj_string(arena, "floating_nodes"));
+    Json_Array *nodes = json_dict_get_array(curr, JSON_OBJ_STR_FROM_CSTR_LIT("nodes"));
+    Json_Array *floating_nodes = json_dict_get_array(curr, JSON_OBJ_STR_FROM_CSTR_LIT("floating_nodes"));
 
     if (parent != NULL) {
-        String *node_type = json_dict_get_string(curr, json_obj_string(arena, "type"));
-        String *parent_type = json_dict_get_string(parent, json_obj_string(arena, "type"));
+        String *node_type = json_dict_get_string(curr, JSON_OBJ_STR_FROM_CSTR_LIT("type"));
+        String *parent_type = json_dict_get_string(parent, JSON_OBJ_STR_FROM_CSTR_LIT("type"));
         if (nodes->count <= 0
             && floating_nodes->count <= 0
             && str_eq_cstr(node_type, "con")
             && !str_eq_cstr(parent_type, "dockarea"))
         {
-            // NOTE(nic): yes, we use the class as the window name, don't ask questions
-            Json_Dict *window_props = json_dict_get_dict(curr, json_obj_string(arena, "window_properties"));
-            int64_t *window_id = json_dict_get_int64(curr, json_obj_string(arena, "id"));
+            Json_Dict *window_props = json_dict_get_dict(curr, JSON_OBJ_STR_FROM_CSTR_LIT("window_properties"));
+            int64_t *window_id = json_dict_get_int64(curr, JSON_OBJ_STR_FROM_CSTR_LIT("id"));
 
-            String *window_name = json_dict_get_string(window_props, json_obj_string(arena, "class"));
+            // NOTE(nic): yes, we use the class as the window name, don't ask questions
+            String *window_name = json_dict_get_string(window_props, JSON_OBJ_STR_FROM_CSTR_LIT("class"));
             if (window_name == NULL) {
-                window_name = json_dict_get_string(window_props, json_obj_string(arena, "title"));
+                window_name = json_dict_get_string(window_props, JSON_OBJ_STR_FROM_CSTR_LIT("title"));
             }
             assert(window_name != NULL);
 
@@ -295,13 +293,13 @@ int main(void) {
         assert(json.kind == JSON_OBJ_DICT);
         Json_Dict *dict = &json.as.dict;
 
-        Json_Array *nodes = json_dict_get_array(dict, json_obj_string(&arena, "nodes"));
+        Json_Array *nodes = json_dict_get_array(dict, JSON_OBJ_STR_FROM_CSTR_LIT("nodes"));
         if (nodes == NULL) {
             fprintf(stderr, "Error: could not find i3 nodes\n");
             exit(1);
         }
 
-        Json_Dict *scratchpad = i3_find_scratchpad(&arena, nodes);
+        Json_Dict *scratchpad = i3_find_scratchpad(nodes);
         if (scratchpad == NULL) {
             fprintf(stderr, "Error: could not find i3 scratchpad\n");
             exit(1);
@@ -359,18 +357,18 @@ int main(void) {
         Json_Array *array = &json.as.array;
 
         Json_Dict *dict = json_array_get_dict(array, 0);
-        bool *success = json_dict_get_boolean(dict, json_obj_string(&arena, "success"));
+        bool *success = json_dict_get_boolean(dict, JSON_OBJ_STR_FROM_CSTR_LIT("success"));
         if (success == NULL) {
             fprintf(stderr, "Error: could not find `success` entry in i3 response\n");
             exit(1);
         }
 
         if (!(*success)) {
-            String *error = json_dict_get_string(dict, json_obj_string(&arena, "error"));
-            bool *parse_error = json_dict_get_boolean(dict, json_obj_string(&arena, "parse_error"));
+            String *error = json_dict_get_string(dict, JSON_OBJ_STR_FROM_CSTR_LIT("error"));
+            bool *parse_error = json_dict_get_boolean(dict, JSON_OBJ_STR_FROM_CSTR_LIT("parse_error"));
             if (parse_error != NULL && *parse_error) {
-                String *input = json_dict_get_string(dict, json_obj_string(&arena, "input"));
-                String *pos = json_dict_get_string(dict, json_obj_string(&arena, "errorposition"));
+                String *input = json_dict_get_string(dict, JSON_OBJ_STR_FROM_CSTR_LIT("input"));
+                String *pos = json_dict_get_string(dict, JSON_OBJ_STR_FROM_CSTR_LIT("errorposition"));
                 fprintf(
                     stderr, "Error: i3 could not parse command: %.*s\n",
                     (int)error->count, error->items
