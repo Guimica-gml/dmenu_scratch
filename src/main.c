@@ -326,7 +326,7 @@ int main(void) {
     {
         Window chosen_window = windows.items[chosen_window_index];
         String command = {0};
-        str_append_fmt(&arena, &command, "[con_id=\"%zu\"] focus", chosen_window.id);
+        str_append_fmt(&arena, &command, "[con_id=\"%zu\"] scratchpad show", chosen_window.id);
         str_append_null(&arena, &command);
 
         String packet = {0};
