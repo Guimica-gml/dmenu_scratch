@@ -1,6 +1,9 @@
 # dmenu_scratch
 Tool to manage i3wm scratchpad using dmenu as frontend.
 
+> [!NOTE]  
+> dmenu_scratchpad development has been moved to [codeberd repo](https://codeberg.org/c_nicnic/dmenu_scratchpad).
+
 ## Notes
 - This tool only works if you are using [i3](https://i3wm.org/) as your window manager.
 - You will need [dmenu](https://tools.suckless.org/dmenu/) which usually comes by default in an i3 instalation.
